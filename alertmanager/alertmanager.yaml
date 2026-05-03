@@ -1,0 +1,34 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: scaler
+  group_by: [alertname]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 5m
+  routes:
+    - match:
+        alertname: HighCPUUsage
+      receiver: scaler
+      continue: false
+    - match:
+        alertname: CriticalCPUUsage
+      receiver: scaler
+      continue: false
+    - match:
+        alertname: ContainerDown
+      receiver: scaler
+      continue: false
+
+receivers:
+  - name: scaler
+    webhook_configs:
+      - url: "http://scaler:3619/scale-up"
+        send_resolved: false
+        http_config: {}
+  - name: scaler-down
+    webhook_configs:
+      - url: "http://scaler:3619/scale-down"
+        send_resolved: false
+        http_config: {}

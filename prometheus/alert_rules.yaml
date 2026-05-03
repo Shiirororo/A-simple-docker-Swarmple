@@ -1,0 +1,38 @@
+groups:
+  - name: app
+    rules:
+      - alert: HighCPUUsage
+        expr: 
+          sum(rate(container_cpu_usage_seconds_total{name=~".*demo.*"}[1m])) by (name) > 0.1
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ $labels.name }}"
+          description: "Container CPU usage is {{ $value | humanizePercentage }} (threshold 80%)"
+
+      - alert: CriticalCPUUsage
+        expr:
+          sum(rate(container_cpu_usage_seconds_total{container_label_com_docker_swarm_service_name="demo_app"}[1m])) > 0.18
+        for: 30s
+        labels:
+          severity: critical
+          action: scale-up
+        annotations:
+          summary: "Critical CPU on {{ $labels.name }}"
+          description: "Container CPU usage is {{ $value | humanizePercentage }} (threshold 95%)"
+      - alert: LowLoad
+        expr: sum(rate(container_cpu_usage_seconds_total{container_label_com_docker_swarm_service_name="demo_app"}[1m])) < 0.05
+        for: 40s
+        labels:
+          severity: warning
+          action: scale-down
+      - alert: ContainerDown
+        expr: absent(container_last_seen{name=~".*demo.*"})
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "App container is down"
+          description: "No demo app container has been seen for 1m"
+

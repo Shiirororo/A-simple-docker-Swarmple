@@ -1,0 +1,85 @@
+
+networks:
+  monitor-net:
+    driver: overlay
+services:
+  app:
+    build: ./app
+    image: demo-app:latest
+    ports:
+      - "80:3618"
+    networks:
+      - monitor-net
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "0.2"
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.0
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - monitor-net
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./prometheus/:/etc/prometheus/
+    command: --config.file=/etc/prometheus/prometheus.yaml --storage.tsdb.path=/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - monitor-net
+
+  alertmanager:
+    image: prom/alertmanager
+    volumes:
+      - ./alertmanager/:/etc/alertmanager/
+    command: --config.file=/etc/alertmanager/alertmanager.yaml
+    networks:
+      - monitor-net
+  scaler:
+    user: root
+    build: ./scaler
+    image: scaler:latest
+    privileged: true
+    ports:
+      - "3619:3619"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - monitor-net
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/:/etc/loki/
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - monitor-net
+
+  promtail:
+    image: grafana/promtail:latest
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./promtail/config.yml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - monitor-net
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    networks:
+      - monitor-net
