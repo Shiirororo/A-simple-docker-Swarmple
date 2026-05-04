@@ -2,14 +2,45 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 )
+
+func getCPUUsage() (float64, error) {
+	resp, err := http.Get("http://prometheus:9090/api/v1/query?query=rate(container_cpu_usage_seconds_total[1m])")
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Data struct {
+			Result []struct {
+				Value []interface{}
+			}
+		}
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, err
+	}
+
+	if len(result.Data.Result) == 0 {
+		return 0, fmt.Errorf("no data")
+	}
+
+	valStr := result.Data.Result[0].Value[1].(string)
+	val, _ := strconv.ParseFloat(valStr, 64)
+
+	return val, nil
+}
 
 func scaleService(serviceName string, targetReplicas uint64) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -46,9 +77,14 @@ func scaleService(serviceName string, targetReplicas uint64) error {
 	}
 	return nil
 }
-func autoScaler()
 
-func cadVisor()
+// func autoScaler() {
+
+// }
+
+// func cadVisor() {
+
+// }
 
 func main() {
 	log.Println("Scaler is starting...")
