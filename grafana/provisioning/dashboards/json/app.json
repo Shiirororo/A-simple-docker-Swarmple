@@ -28,6 +28,25 @@
           "legendFormat": "Containers"
         }
       ]
+    },
+    {
+      "id": 3,
+      "title": "Container Count Over Time",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "count(container_last_seen{container_label_com_docker_swarm_service_name=\"demo_app\"})",
+          "legendFormat": "Containers"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "decimals": 0
+        }
+      }
     }
   ],
   "templating": {
