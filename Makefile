@@ -1,5 +1,5 @@
 
-.PHONY: all deploy build scale-up scale-down status logs clean test-load help init stop
+.PHONY: all deploy build scale-up scale-down status logs clean test-load help init stop update
 
 STACK_NAME := demo
 APP_NAME := app
@@ -16,7 +16,7 @@ build:
 	docker pull gcr.io/cadvisor/cadvisor:v0.47.0
 
 deploy: init
-	docker stack deploy -c compose.yaml $(STACK_NAME)
+	docker stack deploy -c compose.yml $(STACK_NAME)
 	docker service update --force $(STACK_NAME)_$(APP_NAME) || true
 
 scale-up:
@@ -58,3 +58,8 @@ help:
 	@echo "  clean      - remove stack and containers"
 	@echo "  stop       - stop stack and leave swarm (no delete)"
 	@echo "  test-load  - run load test with ab"
+
+
+update:
+	@echo " "
+	docker service update --force $(SERVICE)

@@ -7,14 +7,17 @@ services:
     build: ./app
     image: demo-app:latest
     ports:
-      - "80:3618"
+      - target: 3618
+        published: 80
+        mode: ingress
     networks:
       - monitor-net
     deploy:
       replicas: 1
       resources:
         limits:
-          cpus: "0.2"
+          cpus: "1.5"
+      endpoint_mode: vip
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.47.0
     volumes:
@@ -28,7 +31,7 @@ services:
     image: prom/prometheus
     volumes:
       - ./prometheus/:/etc/prometheus/
-    command: --config.file=/etc/prometheus/prometheus.yaml --storage.tsdb.path=/prometheus
+    command: --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus
     ports:
       - "9876:9090"
     networks:
@@ -63,7 +66,7 @@ services:
       - "3100:3100"
     volumes:
       - ./loki/:/etc/loki/
-    command: -config.file=/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/local-config.yml
     networks:
       - monitor-net
 
@@ -79,7 +82,12 @@ services:
 
   grafana:
     image: grafana/grafana:latest
+    user: root
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
     ports:
       - "6789:3000"
     networks:
       - monitor-net
+    environment:
+    - GF_PLUGIN_DISABLE_INSTALL=true

@@ -4,9 +4,9 @@ global:
 route:
   receiver: scaler
   group_by: [alertname]
-  group_wait: 10s
+  group_wait: 0s
   group_interval: 1m
-  repeat_interval: 5m
+  repeat_interval: 2m
   routes:
     - match:
         alertname: HighCPUUsage
@@ -19,6 +19,10 @@ route:
     - match:
         alertname: ContainerDown
       receiver: scaler
+      continue: false
+    - match:
+        alertname: LowLoad
+      receiver: scaler-down
       continue: false
 
 receivers:

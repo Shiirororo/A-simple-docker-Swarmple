@@ -2,121 +2,130 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
+	"sync"
 	"time"
 
 	"github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 )
 
-func getCPUUsage() (float64, error) {
-	resp, err := http.Get("http://prometheus:9090/api/v1/query?query=rate(container_cpu_usage_seconds_total[1m])")
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
+const (
+	serviceName = "demo_app"
+	maxReplicas = 10
+	minReplicas = 1
+)
 
-	var result struct {
-		Data struct {
-			Result []struct {
-				Value []interface{}
-			}
-		}
-	}
+var (
+	mu      sync.Mutex
+	pending string // "up" | "down" | ""
+	timer   *time.Timer
+)
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return 0, err
-	}
-
-	if len(result.Data.Result) == 0 {
-		return 0, fmt.Errorf("no data")
-	}
-
-	valStr := result.Data.Result[0].Value[1].(string)
-	val, _ := strconv.ParseFloat(valStr, 64)
-
-	return val, nil
-}
-
-func scaleService(serviceName string, targetReplicas uint64) error {
+func getReplicas() (uint64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
 	cli, err := client.New(client.FromEnv)
 	if err != nil {
-		return fmt.Errorf("Error Docker Client %v", err)
+		return 0, err
 	}
 	defer cli.Close()
-
-	log.Printf("Check service: %s", serviceName)
 	res, err := cli.ServiceInspect(ctx, serviceName, client.ServiceInspectOptions{})
 	if err != nil {
-		return fmt.Errorf("Service not found '%s' : %v", serviceName, err)
+		return 0, err
 	}
-	currReplicas := *res.Service.Spec.Mode.Replicated.Replicas
-	log.Printf("Current replicas: %d, Target: %d", currReplicas, targetReplicas)
-	if currReplicas == targetReplicas {
-		log.Printf("Replicas is maxed")
-		return nil
-	}
-	newSpec := res.Service.Spec
-	newSpec.Mode.Replicated = &swarm.ReplicatedService{
-		Replicas: &targetReplicas,
-	}
-	log.Printf("Sending request to scale to %d replicas...", targetReplicas)
-	_, err = cli.ServiceUpdate(ctx, serviceName, client.ServiceUpdateOptions{
-		Version: res.Service.Meta.Version,
-		Spec:    newSpec,
-	})
-	if err != nil {
-		return fmt.Errorf("Scale failed: %v", err)
-	}
-	return nil
+	return *res.Service.Spec.Mode.Replicated.Replicas, nil
 }
 
-// func autoScaler() {
+func setReplicas(n uint64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cli, err := client.New(client.FromEnv)
+	if err != nil {
+		return err
+	}
+	defer cli.Close()
+	res, err := cli.ServiceInspect(ctx, serviceName, client.ServiceInspectOptions{})
+	if err != nil {
+		return err
+	}
+	spec := res.Service.Spec
+	spec.Mode.Replicated = &swarm.ReplicatedService{Replicas: &n}
+	_, err = cli.ServiceUpdate(ctx, serviceName, client.ServiceUpdateOptions{
+		Version: res.Service.Meta.Version,
+		Spec:    spec,
+	})
+	return err
+}
 
-// }
+func schedule(direction string) {
+	mu.Lock()
+	defer mu.Unlock()
 
-// func cadVisor() {
+	if pending == direction {
+		log.Printf("[SCHEDULE] already pending %s, timer reset", direction)
+		timer.Reset(30 * time.Second)
+		return
+	}
 
-// }
+	if timer != nil {
+		timer.Stop()
+	}
+	pending = direction
+	log.Printf("[SCHEDULE] will scale-%s in 30s", direction)
 
-func main() {
-	log.Println("Scaler is starting...")
+	timer = time.AfterFunc(30*time.Second, func() {
+		mu.Lock()
+		dir := pending
+		pending = ""
+		mu.Unlock()
 
-	http.HandleFunc("/scale-up", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("[WEBHOOK] received request /scale-up")
-		err := scaleService("demo_app", 5)
+		cur, err := getReplicas()
 		if err != nil {
-			log.Println(err)
-			http.Error(w, err.Error(), 500)
+			log.Printf("[ERROR] get replicas: %v", err)
 			return
 		}
-		log.Println("[SUCCESS] scaled up to 5 replicas!")
-		fmt.Fprint(w, "Scale up sucessfully!")
+		var next uint64
+		if dir == "up" {
+			if cur >= maxReplicas {
+				log.Printf("[SKIP] already at maximum replicas (%d)", maxReplicas)
+				return
+			}
+			next = cur + 1
+		} else {
+			if cur <= minReplicas {
+				log.Printf("[SKIP] already at minimum replicas (%d)", minReplicas)
+				return
+			}
+			next = cur - 1
+		}
+		log.Printf("[SCALE] %s: %d → %d", dir, cur, next)
+		if err := setReplicas(next); err != nil {
+			log.Printf("[ERROR] scale-%s: %v", dir, err)
+		}
+	})
+}
 
+func main() {
+	log.Println("Scaler starting on :3619")
+	log.Println("Succesfully create scheduler")
+	http.HandleFunc("/scale-up", func(w http.ResponseWriter, r *http.Request) {
+		log.Println("[WEBHOOK] /scale-up")
+		schedule("up")
+		fmt.Fprint(w, "Scale-up scheduled in 30s")
 	})
 
 	http.HandleFunc("/scale-down", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("[WEBHOOK] received request /scale-down")
-		err := scaleService("demo_app", 1)
-		if err != nil {
-			log.Println(err)
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		log.Println("[SUCCESS] scaled down to 1 replica!")
-		fmt.Fprint(w, "Scale down sucessfully!")
+		log.Println("[WEBHOOK] /scale-down")
+		schedule("down")
+		fmt.Fprint(w, "Scale-down scheduled in 30s")
 	})
 
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "OK")
 	})
-	fmt.Println("Listening on :3619")
+
 	http.ListenAndServe(":3619", nil)
 }

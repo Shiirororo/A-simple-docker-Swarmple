@@ -8,7 +8,7 @@ alerting:
         - targets: ["alertmanager:9093"]
 
 rule_files:
-  - "alert_rules.yaml"
+  - "alert_rules.yml"
 
 scrape_configs:
   - job_name: "cadvisor"
@@ -17,5 +17,5 @@ scrape_configs:
 
   - job_name: "scaler"
     static_configs:
-      - targets: ["scaler:3619"]
+      - targets: ["localhost:3619"]
     metrics_path: /health
