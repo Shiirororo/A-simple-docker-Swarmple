@@ -5,15 +5,21 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 )
 
+const (
+	app_name = "demo_app"
+	min      = 2
+	max      = 10
+)
+
 var (
-	min = 2
-	max = 10
+	mu sync.Mutex
 )
 
 func scaleService(serviceName string, delta int) error {
@@ -60,22 +66,46 @@ func scaleService(serviceName string, delta int) error {
 	return nil
 }
 
-func getContainerCount(serviceName string) (int, error) {
+// func checkHealthService() {
+
+// }
+func getReplicas() (uint64, error) {
+	//Create request to docker daemon with timeout 10 second, if request takes more than 10 second to response => Cancel
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	//Create docker client
 	cli, err := client.New(client.FromEnv)
 	if err != nil {
-		return 0, fmt.Errorf("Error Docker Client %v", err)
+		return 0, err
 	}
 	defer cli.Close()
 
-	res, err := cli.ServiceInspect(ctx, serviceName, client.ServiceInspectOptions{})
+	//Inspect service name, with option (currently no options)
+	res, err := cli.ServiceInspect(ctx, app_name, client.ServiceInspectOptions{})
 	if err != nil {
-		return 0, fmt.Errorf("Service not found '%s' : %v", serviceName, err)
+		return 0, err
 	}
-	return int(*res.Service.Spec.Mode.Replicated.Replicas), nil
+	//return nummber of replicated replicas
+	return *res.Service.Spec.Mode.Replicated.Replicas, nil
 }
+
+// func getContainerCount(serviceName string) (int, error) {
+// 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+// 	defer cancel()
+
+// 	cli, err := client.New(client.FromEnv)
+// 	if err != nil {
+// 		return 0, fmt.Errorf("Error Docker Client %v", err)
+// 	}
+// 	defer cli.Close()
+
+// 	res, err := cli.ServiceInspect(ctx, serviceName, client.ServiceInspectOptions{})
+// 	if err != nil {
+// 		return 0, fmt.Errorf("Service not found '%s' : %v", serviceName, err)
+// 	}
+// 	return int(*res.Service.Spec.Mode.Replicated.Replicas), nil
+// }
 
 func main() {
 	log.Println("Scaler is starting...")
@@ -88,7 +118,7 @@ func main() {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		count, _ := getContainerCount("demo_app")
+		count, _ := getReplicas()
 		log.Printf("[SUCCESS] scaled up, now %d replicas", count)
 		fmt.Fprintf(w, "Scale up successful! Containers: %d\n", count)
 	})
@@ -101,13 +131,13 @@ func main() {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		count, _ := getContainerCount("demo_app")
+		count, _ := getReplicas()
 		log.Printf("[SUCCESS] scaled down, now %d replicas", count)
 		fmt.Fprintf(w, "Scale down successful! Containers: %d\n", count)
 	})
 
 	http.HandleFunc("/count", func(w http.ResponseWriter, r *http.Request) {
-		count, err := getContainerCount("demo_app")
+		count, err := getReplicas()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return

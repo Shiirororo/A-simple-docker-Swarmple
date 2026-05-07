@@ -17,23 +17,25 @@ groups:
         expr: |
           avg(
             rate(container_cpu_usage_seconds_total{
-              container_label_com_docker_swarm_service_name="demo_app"
-            }[1m])
-          ) > 1.05
-        for: 20s
+              container_label_com_docker_swarm_service_name="demo_app",
+              image != ""
+            }[30s])
+          ) > 0.35
+        for: 10s
         labels:
           severity: critical
           action: scale-up
         annotations:
           summary: "Critical CPU on {{ $labels.name }}"
-          description: "Container CPU usage is {{ $value | humanizePercentage }} (threshold 95%)"
+          description: "Average CPU core usage is {{ $value }} (threshold 80%)"
       - alert: LowLoad
         expr: |
           avg(
             rate(container_cpu_usage_seconds_total{
-              container_label_com_docker_swarm_service_name="demo_app"
-            }[1m])
-          ) < 0.6
+              container_label_com_docker_swarm_service_name="demo_app",
+              image != ""
+            }[2m])
+          ) < 0.125
           and
           count(
             container_last_seen{
@@ -42,8 +44,11 @@ groups:
           ) > 1
         for: 120s
         labels:
-          severity: warning
+          severity: low
           action: scale-down
+        annotations:
+          summary: "CPU low load"
+          description: "Average CPU usage stayed below 25% of 0.5 CPU limit"
       - alert: ContainerDown
         expr: absent(container_last_seen{name=~".*demo.*"})
         for: 1m
