@@ -12,12 +12,12 @@ route:
         alertname: HighCPUUsage
       receiver: scaler
       continue: false
-      repeat_interval: 10m
+      repeat_interval: 30s
     - match:
         alertname: CriticalCPUUsage
       receiver: scaler
       continue: false
-      repeat_interval: 10m
+      repeat_interval: 30s
     - match:
         alertname: ContainerDown
       receiver: scaler

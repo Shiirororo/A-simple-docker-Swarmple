@@ -61,5 +61,4 @@ help:
 
 
 update:
-	@echo " "
-	docker service update --force $(SERVICE)
+	docker service update --force $(filter-out $@,$(MAKECMDGOALS))
