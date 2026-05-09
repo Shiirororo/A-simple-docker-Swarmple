@@ -2,13 +2,6 @@ auth_enabled: false
 
 server:
   http_listen_port: 3100
-  grpc_listen_port: 9095
-
-common:
-  ring:
-    instance_addr: 127.0.0.1
-    kvstore:
-      store: inmemory
 
 ingester:
   lifecycler:
@@ -21,16 +14,16 @@ ingester:
 
 schema_config:
   configs:
-    - from: 2024-01-01
-      store: tsdb
+    - from: 2020-01-01
+      store: boltdb-shipper
       object_store: filesystem
-      schema: v13
+      schema: v11
       index:
         prefix: index_
         period: 24h
 
 storage_config:
-  tsdb_shipper:
+  boltdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/cache
   filesystem:
